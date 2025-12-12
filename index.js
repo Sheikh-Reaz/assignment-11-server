@@ -56,21 +56,6 @@ const client = new MongoClient(uri, {
    VERIFY TOKEN MIDDLEWARE
 ================================= */
 
-const verifyFBToken = async (req, res, next) => {
-  const token = req.cookies.token; // ✅ read from HttpOnly cookie
-
-  if (!token) {
-    return res.status(401).send({ message: "unauthorized access" });
-  }
-
-  try {
-    const decoded = await admin.auth().verifyIdToken(token);
-    req.decoded_email = decoded.email; // ✅ attach user email
-    next();
-  } catch (error) {
-    return res.status(401).send({ message: "unauthorized access" });
-  }
-};
 
 
 
