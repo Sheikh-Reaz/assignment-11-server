@@ -64,7 +64,74 @@ const client = new MongoClient(uri, {
 
 
 
+const verifyFBToken = async (req, res, next) => {
+  const token = req.cookies.token; // ✅ read from HttpOnly cookie
 
+  if (!token) {
+    return res.status(401).send({ message: "unauthorized access" });
+  }
+
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    req.decoded_email = decoded.email; // ✅ attach user email
+    next();
+  } catch (error) {
+    return res.status(401).send({ message: "unauthorized access" });
+  }
+};
+
+/* ================================
+   SERVER RUN FUNCTION
+================================= */
+
+async function run() {
+  try {
+    await client.connect();
+
+    const db = client.db("assignment-11");
+    const usersCollection = db.collection("users");
+    const productsCollection = db.collection("products")
+
+/* ================================
+   JWT ROUTE → SAVE TOKEN TO COOKIE
+================================= */
+app.post("/jwt", async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    return res.status(400).send({ message: "Token is required" });
+  }
+
+  try {
+    // Verify Firebase ID token
+    const decoded = await admin.auth().verifyIdToken(token);
+
+    // Send cookie with proper settings
+    res
+      .cookie("token", token, {
+        httpOnly: true,                      // cannot be accessed by JS
+        secure: process.env.NODE_ENV === "production", // true in prod
+        sameSite: "strict",                  // CSRF protection
+        maxAge: 60 * 60 * 1000,              // 1 hour (matches Firebase token)
+      })
+      .status(200)
+      .send({ success: true, email: decoded.email });
+  } catch (error) {
+    console.error("JWT Error:", error);
+    res.status(401).send({ message: "Invalid Firebase Token" });
+  }
+});
+
+
+    /* ================================
+       LOGOUT → CLEAR COOKIE
+    ================================= */
+
+    app.post("/logout", (req, res) => {
+      res.clearCookie("token").send({ success: true });
+    });
+
+ 
 
 
 
