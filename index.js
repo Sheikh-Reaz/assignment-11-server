@@ -136,6 +136,9 @@ app.post("/jwt", async (req, res) => {
     app.post("/logout", (req, res) => {
       res.clearCookie("token").send({ success: true });
     });
+    app.post("/logout", (req, res) => {
+      res.clearCookie("token").send({ success: true });
+    });
 
        /* ================================
        PROTECTED APIS
