@@ -258,8 +258,6 @@ async function run() {
       }
     );
 
-
-
     //Products related apis............................
 
     app.post("/add-product", async (req, res) => {
@@ -313,11 +311,36 @@ async function run() {
         res.status(500).send({ success: false, message: "Server error" });
       }
     });
-
+    //all product
+    // GET /products
     app.get("/products", async (req, res) => {
-      const products = await productsCollection.find().toArray();
-      res.send(products);
+      try {
+        const { search = "", page = 1, limit = 6 } = req.query;
+
+        const query = {};
+
+        // Search by title
+        if (search) {
+          query.title = { $regex: search, $options: "i" }; // case-insensitive search
+        }
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const totalProducts = await productsCollection.countDocuments(query);
+        const totalPages = Math.ceil(totalProducts / parseInt(limit));
+
+        const products = await productsCollection
+          .find(query)
+          .skip(skip)
+          .limit(parseInt(limit))
+          .toArray();
+
+        res.send({ products, totalPages });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ error: "Failed to fetch products" });
+      }
     });
+
     // GET my-products for logged in user
     app.get("/my-products", verifyFBToken, async (req, res) => {
       try {
@@ -359,13 +382,9 @@ async function run() {
       res.send(result);
     });
 
-    // ======================================================
-    // ORDER RELATED APIS (SAFE REFACTOR – FRONTEND COMPATIBLE)
-    // ======================================================
-
-    // ------------------------------------
-    // CREATE ORDER (Buyer)
-    // ------------------------------------
+    // 
+    // ORDER RELATED APIS 
+   
     app.post("/order", async (req, res) => {
       try {
         const order = req.body;
@@ -380,11 +399,7 @@ async function run() {
         res.status(500).send({ message: "Failed to create order" });
       }
     });
-
-    // ------------------------------------
-    // UPDATE ORDER STATUS (Seller: Approve / Reject)
-    // USED BY: PendingOrders.jsx
-    // ------------------------------------
+   
     app.patch(
       "/orders/:orderId",
       verifyFBToken,
@@ -416,10 +431,6 @@ async function run() {
       }
     );
 
-    // ------------------------------------
-    // CANCEL ORDER (Buyer)
-    // USED BY: MyOrders.jsx
-    // ------------------------------------
     app.patch("/orders/:orderId/cancel", verifyFBToken, async (req, res) => {
       try {
         const { orderId } = req.params;
@@ -452,12 +463,6 @@ async function run() {
       }
     });
 
-    // ------------------------------------
-    // GET ORDERS (Buyer & Admin – SMART ROUTE)
-    // USED BY:
-    // - Buyer: MyOrders.jsx
-    // - Admin: AllOrders.jsx
-    // ------------------------------------
     app.get("/orders", verifyFBToken, async (req, res) => {
       try {
         const email = req.decoded_email;
@@ -486,11 +491,6 @@ async function run() {
         res.status(500).send({ message: "Failed to fetch orders" });
       }
     });
-
-    // ------------------------------------
-    // SELLER: GET PENDING ORDERS
-    // USED BY: PendingOrders.jsx
-    // ------------------------------------
     app.get(
       "/orders/pending",
       verifyFBToken,
@@ -515,10 +515,6 @@ async function run() {
       }
     );
 
-    // ------------------------------------
-    // SELLER: GET APPROVED ORDERS
-    // USED BY: ApprovedOrders.jsx (tracking untouched)
-    // ------------------------------------
     app.get(
       "/orders/approved",
       verifyFBToken,
@@ -544,9 +540,6 @@ async function run() {
     );
 
     //Payment related apis
-    // ------------------------------------
-    // STRIPE PAYMENT API (USD)
-    // ------------------------------------
     app.post("/create-checkout-session", async (req, res) => {
       try {
         const {
@@ -587,17 +580,13 @@ async function run() {
         res.send({ url: session.url });
       } catch (err) {
         console.error("Stripe checkout error:", err);
-        res
-          .status(500)
-          .send({
-            message: "Failed to create checkout session",
-            error: err.message,
-          });
+        res.status(500).send({
+          message: "Failed to create checkout session",
+          error: err.message,
+        });
       }
     });
-
     //Trackings related apis
-
     app.patch(
       "/orders/:orderId/tracking",
       verifyFBToken,
