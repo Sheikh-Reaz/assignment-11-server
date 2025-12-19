@@ -257,9 +257,6 @@ async function run() {
         }
       }
     );
-    app.get('/project',async(req,res)=>{
-      
-    } )
 
 
 
