@@ -12,7 +12,13 @@ const port = process.env.PORT || 3000;
 
 //-------------FIREBASE ADMIN
 
-const serviceAccount = require("./serviceAccountKey.json");
+// const serviceAccount = require("./serviceAccountKey.json");
+// const serviceAccount = require("./firebase-admin-key.json");
+
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
+  "utf8"
+);
+const serviceAccount = JSON.parse(decoded);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -30,14 +36,25 @@ function generateOrderId() {
 }
 
 //---------- MIDDLEWARES
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://assignment-11-159ed.web.app",
+];
+
 app.use(
   cors({
-    origin: ["http://localhost:5173"],
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
-    methods: ["GET", "POST", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
 app.use(express.json());
 app.use(cookieParser());
 
@@ -115,24 +132,33 @@ async function run() {
 
     //cookie verification
     app.post("/jwt", async (req, res) => {
-      const { token } = req.body;
-      const decoded = await admin.auth().verifyIdToken(token);
+      try {
+        const { token } = req.body;
+        const decoded = await admin.auth().verifyIdToken(token);
 
-      res
-        .cookie("token", token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "strict",
-          maxAge: 60 * 60 * 1000,
-        })
-        .send({ email: decoded.email });
+        res
+          .cookie("token", token, {
+            httpOnly: true,
+            secure: true,
+            sameSite: "none",
+            maxAge: 60 * 60 * 1000,
+          })
+          .send({ email: decoded.email });
+      } catch (err) {
+        return res.status(401).send({ message: "Invalid token" });
+      }
     });
 
     app.post("/logout", (req, res) => {
-      res.clearCookie("token").send({ success: true });
+      res.clearCookie("token", {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+      });
+      res.send({ success: true });
     });
 
-    //Use related apis...............................
+    //User related apis...............................
 
     app.get("/users/:email/role", verifyFBToken, async (req, res) => {
       const email = req.params.email;
@@ -208,6 +234,44 @@ async function run() {
     });
 
     //admin get users
+
+    // GET /users - list all users with pagination and filters
+
+    app.get("/users", verifyFBToken, async (req, res) => {
+      try {
+        const { searchText = "", page = 1, limit = 10, role = "" } = req.query;
+        const query = {};
+
+        // Search by name or email
+        if (searchText) {
+          query.$or = [
+            { userName: { $regex: searchText, $options: "i" } },
+            { email: { $regex: searchText, $options: "i" } },
+          ];
+        }
+
+        // Filter by role
+        if (role) query.role = role;
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        const totalUsers = await usersCollection.countDocuments(query);
+        const users = await usersCollection
+          .find(query)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(parseInt(limit))
+          .toArray();
+
+        res.send({ users, totalUsers });
+      } catch (err) {
+        console.error("Fetch users error:", err);
+        res
+          .status(500)
+          .send({ users: [], totalUsers: 0, message: "Failed to fetch users" });
+      }
+    });
+
     app.patch(
       "/users/:id/role",
       verifyFBToken,
@@ -340,6 +404,16 @@ async function run() {
         res.status(500).send({ error: "Failed to fetch products" });
       }
     });
+    // GET /all-products - admin only
+    app.get("/all-products", verifyFBToken, verifyAdmin, async (req, res) => {
+      try {
+        const products = await productsCollection.find({}).toArray();
+        res.send(products);
+      } catch (err) {
+        console.error("Fetch all products error:", err);
+        res.status(500).send({ message: "Failed to fetch all products" });
+      }
+    });
 
     // GET my-products for logged in user
     app.get("/my-products", verifyFBToken, async (req, res) => {
@@ -382,9 +456,9 @@ async function run() {
       res.send(result);
     });
 
-    // 
-    // ORDER RELATED APIS 
-   
+    //
+    // ORDER RELATED APIS
+
     app.post("/order", async (req, res) => {
       try {
         const order = req.body;
@@ -399,7 +473,7 @@ async function run() {
         res.status(500).send({ message: "Failed to create order" });
       }
     });
-   
+
     app.patch(
       "/orders/:orderId",
       verifyFBToken,
@@ -628,8 +702,8 @@ async function run() {
       }
     });
 
-    await client.db("admin").command({ ping: 1 });
-    console.log("✅ MongoDB Connected");
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("✅ MongoDB Connected");
   } catch (err) {
     console.error(err);
   }
@@ -640,7 +714,4 @@ run();
 app.get("/", (req, res) => {
   res.send("Assignment 11 server is running");
 });
-
-app.listen(port, () => {
-  console.log(`✅ Server running on port ${port}`);
-});
+module.exports = app;
