@@ -97,9 +97,8 @@ async function run() {
     const ordersCollection = db.collection("orders");
     const trackingCollection = db.collection("orderTrackings");
 
-    /* ================================
-       VERIFY MANAGER (✅ FIXED)
-    ================================ */
+
+   
 
     const verifyAdmin = async (req, res, next) => {
       try {
