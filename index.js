@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const admin = require("firebase-admin");
+const mongoose = require("mongoose");
 const app = express();
 const crypto = require("crypto");
 require("dotenv").config();
@@ -9,6 +10,9 @@ const { MongoClient, ServerApiVersion } = require("mongodb");
 const stripe = require("stripe")(process.env.STRIPE_SECRET);
 const { ObjectId } = require("mongodb");
 const port = process.env.PORT || 3000;
+
+// Import dashboard service
+const DashboardService = require("./services/dashboardService");
 
 //-------------FIREBASE ADMIN
 
@@ -379,13 +383,18 @@ async function run() {
     // GET /products
     app.get("/products", async (req, res) => {
       try {
-        const { search = "", page = 1, limit = 6 } = req.query;
+        const { search = "", page = 1, limit = 6, category = "" } = req.query;
 
         const query = {};
 
         // Search by title
         if (search) {
           query.title = { $regex: search, $options: "i" }; // case-insensitive search
+        }
+
+        // Filter by category (case-insensitive)
+        if (category) {
+          query.category = { $regex: category, $options: "i" };
         }
 
         const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -448,9 +457,9 @@ async function run() {
     });
     app.get("/latest-products", async (req, res) => {
       const result = await productsCollection
-        .find({ showOnHome: true }) // ✅ filter first
-        .sort({ createdAt: -1 }) // ✅ correct field name
-        .limit(6)
+        .find({ showOnHome: true })
+        .sort({ createdAt: -1 }) 
+        .limit(8)
         .toArray();
 
       res.send(result);
@@ -702,6 +711,48 @@ async function run() {
       }
     });
 
+    // Dashboard API Endpoints
+    
+    // Admin Dashboard Data
+    app.get("/api/dashboard/admin", verifyFBToken, verifyAdmin, async (req, res) => {
+      try {
+        const dashboardData = await DashboardService.getAdminDashboardData();
+        res.send(dashboardData);
+      } catch (error) {
+        console.error("Admin dashboard error:", error);
+        res.status(500).send({ message: "Error fetching admin dashboard data" });
+      }
+    });
+
+    // Manager Dashboard Data
+    app.get("/api/dashboard/manager", verifyFBToken, verifyManager, async (req, res) => {
+      try {
+        const dashboardData = await DashboardService.getManagerDashboardData();
+        res.send(dashboardData);
+      } catch (error) {
+        console.error("Manager dashboard error:", error);
+        res.status(500).send({ message: "Error fetching manager dashboard data" });
+      }
+    });
+
+    // Buyer Dashboard Data
+    app.get("/api/dashboard/buyer", verifyFBToken, async (req, res) => {
+      try {
+        const email = req.decoded_email;
+        const user = await usersCollection.findOne({ email });
+        
+        if (!user) {
+          return res.status(404).send({ message: "User not found" });
+        }
+
+        const dashboardData = await DashboardService.getBuyerDashboardData(user._id.toString());
+        res.send(dashboardData);
+      } catch (error) {
+        console.error("Buyer dashboard error:", error);
+        res.status(500).send({ message: "Error fetching buyer dashboard data" });
+      }
+    });
+
     // await client.db("admin").command({ ping: 1 });
     // console.log("✅ MongoDB Connected");
   } catch (err) {
@@ -714,4 +765,9 @@ run();
 app.get("/", (req, res) => {
   res.send("Assignment 11 server is running");
 });
+
+app.listen(port, () => {
+  console.log(`Server running on http://localhost:${port}`);
+});
+
 module.exports = app;
